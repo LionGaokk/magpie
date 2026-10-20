@@ -87,6 +87,58 @@ func TestCodexCompact404CompactsLocally(t *testing.T) {
 }
 
 // Other failures go back to Codex as they came.
+// A strict Chat-compatible relay can reject the translated history before
+// it reaches the model. Codex must get the text-only retry instead of a
+// reconnect loop (the same error the AUBO DeepSeek endpoint returns).
+const relayMessagesRefused400 = `{"error":{"message":"AUBO: Invalid assistant message: content or tool_calls must be set","type":"invalid_request_error"}}`
+
+func TestCodexCompactMessagesRefusedAsksAgainAsText(t *testing.T) {
+	f := &fake{t: t, reply: sse(
+		`data: {"type":"response.output_item.done","output_index":0,"item":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"SUMMARY"}]}}`,
+		`data: {"type":"response.completed","response":{"id":"resp_p","status":"completed","output":[]}}`)}
+	f.refuse = func(body []byte) (int, string) {
+		if !strings.Contains(string(body), "This is the conversation so far") {
+			return 400, relayMessagesRefused400
+		}
+		return 0, ""
+	}
+	setup(t, provider.Responses, f)
+	code, body := codexPost(t, compact404Request)
+	if code != 200 {
+		t.Fatalf("%d %s", code, body)
+	}
+	if got := compactedText(t, body); got != "SUMMARY" {
+		t.Errorf("summary %q", got)
+	}
+	if f.calls != 2 || !strings.Contains(string(f.got), "This is the conversation so far") {
+		t.Errorf("asked again as text (calls %d): %s", f.calls, f.got)
+	}
+}
+
+func TestMessagesRefusedOnlyMatchesBadRequestShapeErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		code int
+		body string
+		want bool
+	}{
+		{"shape", 400, relayMessagesRefused400, true},
+		{"tool predecessor", 400, `{"error":{"message":"Messages with role 'tool' must be a response to a preceding message with 'tool_calls'"}}`, true},
+		{"tool responses", 400, `{"error":{"message":"must be followed by tool messages responding to each 'tool_call_id'"}}`, true},
+		{"other bad request", 400, `{"error":{"message":"invalid model"}}`, false},
+		{"same words other status", 500, relayMessagesRefused400, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := &recorder{status: tc.code}
+			rec.body.WriteString(tc.body)
+			got := refusesMessages(rec)
+			if got != tc.want {
+				t.Fatalf("refusesMessages() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestCodexCompactOtherFailuresStay(t *testing.T) {
 	for _, status := range []int{401, 429} {
 		f := &fake{t: t, refuse: func([]byte) (int, string) { return status, `{"error":{"message":"nope"}}` }}

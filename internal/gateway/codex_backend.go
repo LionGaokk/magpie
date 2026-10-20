@@ -2555,7 +2555,8 @@ func (s *Server) codexCompact(w http.ResponseWriter, r *http.Request, body []byt
 	}
 	rec, res, err := ask(body)
 	local := ""
-	if first := rec.status; first == http.StatusNotFound || itemNotFound(rec) || upstreamFailed(rec) || protectionRefused(first, rec.body.Bytes()) ||
+	if first := rec.status; first == http.StatusNotFound || itemNotFound(rec) || upstreamFailed(rec) || refusesMessages(rec) ||
+		protectionRefused(first, rec.body.Bytes()) ||
 		err != nil && protectionWords.MatchString(err.Error()) {
 		who, msg := compactFailure(body, rec)
 		if err != nil {
@@ -2663,6 +2664,28 @@ func upstreamFailed(rec *recorder) bool {
 }
 
 var upstreamFailedWords = regexp.MustCompile(`(?i)upstream request failed`)
+
+// refusesMessages is a 400 turning down the conversation magpie sent for the
+// shape of its messages rather than for what it was asked. A strict upstream
+// — DeepSeek's own API, and the relays in front of it — reads a history whose
+// translation left an assistant turn that says nothing (only its thinking,
+// an empty text) and refuses the whole request, "Invalid assistant message:
+// content or tool_calls must be set"; it refuses a tool answer with no call
+// before it, or a call left unanswered, in the same words. Codex's compaction
+// then stopped there, "压缩已中断", while the conversation went on turn by
+// turn, because only the summary request carries the whole history that holds
+// such a turn. The conversation as text has no assistant turns to refuse, so
+// the summary is asked again so (plainCompact), and compacted without a model
+// when that fails too.
+func refusesMessages(rec *recorder) bool {
+	return rec.status == http.StatusBadRequest && messagesRefusedWords.Match(rec.body.Bytes())
+}
+
+var messagesRefusedWords = regexp.MustCompile(`(?i)` +
+	`invalid assistant message` +
+	`|content or tool_calls must be set` +
+	`|must be a response to a preceding message with 'tool_calls'` +
+	`|must be followed by tool messages responding to each 'tool_call_id'`)
 
 // itemNotFound is a 400 refusing an item of the input by its id, as Azure
 // OpenAI's and OpenAI's API answer one they never stored ("Item with id
