@@ -67,6 +67,11 @@ func compacting(req *Request) bool {
 	if req == nil {
 		return false
 	}
+	if req.CompactionTrigger {
+		// Codex asked it as an item of its input, with no words to read
+		// (responses_compaction_v2): what every other agent says in a prompt.
+		return true
+	}
 	for _, p := range compactSystems {
 		if leads(req.System, p) {
 			return true

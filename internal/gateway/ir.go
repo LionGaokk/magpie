@@ -155,7 +155,11 @@ type Request struct {
 	Messages   []Message
 	Tools      []Tool
 	ToolChoice string // "" | auto | none | required | name:<tool>
-	MaxTokens  int
+	// CompactionTrigger is Codex asking for its conversation to be compacted as
+	// an item of the request's input (responses_compaction_v2), which says it
+	// with no prompt for compacting() to read.
+	CompactionTrigger bool
+	MaxTokens         int
 	Temp       *float64
 	TopP       *float64
 	Stop       []string

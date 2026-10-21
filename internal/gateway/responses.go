@@ -436,6 +436,13 @@ func parseResponses(body []byte) (*Request, error) {
 				if b.Len() > 0 || part.Sealed != nil {
 					r.Messages = append(r.Messages, Message{Role: "assistant", Parts: []Part{part}})
 				}
+			case it.Type == "compaction_trigger":
+				// Codex asking for its conversation to be compacted
+				// (responses_compaction_v2). The item is the whole ask: this
+				// request carries none of the words compacting() reads, so a
+				// compact rule never matched it and the summary went to the
+				// group's first model instead of the one the rule names (#3106).
+				r.CompactionTrigger = true
 			}
 		}
 	}

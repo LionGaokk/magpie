@@ -40,6 +40,34 @@ func TestCompacting(t *testing.T) {
 	}
 }
 
+// #3106: Codex asks for its conversation to be compacted as an item of its
+// input (responses_compaction_v2), which carries none of the words a
+// compaction prompt has. Read as a prompt alone, no compact rule matched that
+// request: the summary went to the group's first model — a Chat upstream that
+// answered 400 — while every ordinary turn of the same conversation was fine.
+func TestCompactingCodexTriggerItem(t *testing.T) {
+	for name, tc := range map[string]struct {
+		body string
+		want bool
+	}{
+		"trigger": {`{"model":"m","input":[
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"go on"}]},
+			{"type":"compaction_trigger"}]}`, true},
+		"plain": {`{"model":"m","input":[
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"go on"}]}]}`, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r, err := parseResponses([]byte(tc.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := compacting(r); got != tc.want {
+				t.Fatalf("compacting() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 // A rule for compacting sends an agent's compaction to its model on its
 // own: the turn it happens in stays where it was, before and after; a
 // compaction longer than the rule's model takes goes by the next rule that
