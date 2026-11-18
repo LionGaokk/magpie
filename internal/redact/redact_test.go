@@ -43,6 +43,17 @@ func TestMask(t *testing.T) {
 		{in: "id 11010519491231002X card 4111 1111 1111 1111", o: Options{Secrets: true, Personal: true}, gone: []string{"11010519491231002X", "4111 1111 1111 1111"}, count: 2},
 		{in: "order 4111111111111112", o: Options{Secrets: true, Personal: true}, kept: []string{"4111111111111112"}}, // fails Luhn
 		{in: "Project Nightjar ships", o: Options{Secrets: true, Words: []string{"Nightjar"}}, gone: []string{"Nightjar"}, count: 1},
+		// a kernel module's name is the driver's, not a secret: in a systemd
+		// unit, after modprobe, and where a line lists the modules a
+		// backport ships (#7056)
+		{in: "ExecStartPre=/sbin/modprobe -r  rtw_8852be rtw_8852b rtw89pci rtw89core rtw89_8852be",
+			kept: []string{"rtw_8852be", "rtw_8852b", "rtw89pci", "rtw89core", "rtw89_8852be"}},
+		{in: "ExecStop=-/sbin/modprobe -r rtw89_8852be rtw89_8852b rtw89pci rtw89core",
+			kept: []string{"rtw89_8852be", "rtw89_8852b", "rtw89pci", "rtw89core"}},
+		{in: "`rtw89core/rtw89pci/rtw89_8852b/rtw89_8852be` via `rtw89-migrate.service`",
+			kept: []string{"rtw89_8852be", "rtw89-migrate.service"}},
+		{in: "modprobe rtw89_8852be", kept: []string{"rtw89_8852be"}},
+		{in: "insmod /root/rtw89-61-migrate/driver/rtw89_8852b.ko", kept: []string{"rtw89_8852b"}},
 	}
 	for _, c := range cases {
 		if !c.o.Personal && c.o.Words == nil {
